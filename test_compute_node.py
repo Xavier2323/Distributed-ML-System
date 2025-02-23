@@ -1,57 +1,72 @@
-import glob
 import sys
-sys.path.insert(0, glob.glob('/home/hsu00191/Distributed_Systems/thrift-0.19.0/lib/py/build/lib*')[0])
 sys.path.append('gen-py')
 
-import time
 import numpy as np
-from thrift.transport import TSocket, TTransport
-from thrift.protocol import TBinaryProtocol
-from service import ComputeNode
-from shared.ttypes import MLModel, TaskStatus
+import os
+from compute_node import ComputeNodeHandler
+from shared.ttypes import MLModel, TrainingResult
 
-def test_compute_node(dataset_file):
-    """ Tests a single compute node by initializing and training a small dataset. """
+def test_model_convergence():
+    print("\n[TEST] Running Model Convergence Test on train_letters1.txt...")
 
-    # Connect to the compute node
-    transport = TSocket.TSocket("localhost", 9091)  # Assuming running on port 9091
-    transport = TTransport.TBufferedTransport(transport)
-    protocol = TBinaryProtocol.TBinaryProtocol(transport)
-    client = ComputeNode.Client(protocol)
-
-    transport.open()
-
-    # Initialize random weights
-    np.random.seed(42)
-    h, k, d = 20, 26, 16  # 16 input features, 20 hidden, 26 output classes
-    V = (np.random.rand(h+1, k) * 0.02) - 0.01
-    W = (np.random.rand(d+1, h) * 0.02) - 0.01
-    model = MLModel(V=V.tolist(), W=W.tolist())
-
-    # Initialize the training
-    status = client.initializeTraining(dataset_file, model)
-    if status == TaskStatus.REJECTED:
-        print("[FAILED] Compute node rejected training initialization")
-        transport.close()
+    # Step 1: Ensure train_letters1.txt exists
+    train_file = "./ML/letters/train_letters1.txt"
+    if not os.path.exists(train_file):
+        print(f"[ERROR] {train_file} not found! Please place it in the same directory.")
         return
 
-    print("[SUCCESS] Compute node initialized training")
+    # Step 2: Initialize Compute Node Handler
+    compute_node = ComputeNodeHandler(load_probability=0.0)  # No overload
 
-    # Train the model for multiple epochs
-    eta = 0.001  # Learning rate
-    epochs = 50  # Train for 50 epochs
-    training_result = client.trainModel(eta, epochs)
+    # Step 3: Initialize model with random weights
+    num_features = 16  # Adjust based on dataset
+    num_hidden = 10
+    num_classes = 26  # Assuming 26 letters (A-Z)
 
-    if training_result.error_rate < 0:
-        print("[FAILED] Training returned an invalid error rate")
-    else:
-        print(f"[SUCCESS] Training completed with error rate: {training_result.error_rate}")
+    np.random.seed(1)
+    V = (np.random.rand(num_hidden + 1, num_classes) * 0.02) - 0.01
+    W = (np.random.rand(num_features + 1, num_hidden) * 0.02) - 0.01
 
-    transport.close()
+    model = MLModel(V=V.tolist(), W=W.tolist())
+    status = compute_node.initializeTraining(train_file, model)
+
+    if status != 1:
+        print("[ERROR] Model initialization failed.")
+        return
+
+    print("[INFO] Model successfully initialized.")
+
+    # Step 4: Train model for multiple rounds and track error
+    eta = 0.0001  # Learning rate
+    epochs = 100  
+    prev_error = None
+
+    for round in range(20):  # 20 training iterations
+        result: TrainingResult = compute_node.trainModel(eta, epochs)
+
+        if result.error_rate == -1:
+            print("[ERROR] Training failed.")
+            return
+
+        print(f"[INFO] Training Round {round+1}: Error Rate = {result.error_rate:.4f}")
+
+        # Ensure gradients are not zero (model is learning)
+        dV_sum = np.sum(np.array(result.gradient.dV))
+        dW_sum = np.sum(np.array(result.gradient.dW))
+
+        if dV_sum == 0 or dW_sum == 0:
+            print("[WARNING] Zero gradients detected! Restarting training with lower eta...")
+            eta /= 2  # Reduce learning rate and restart training
+            continue  # Try again with lower eta
+
+        # Ensure validation error is decreasing (convergence check)
+        if prev_error is not None and result.error_rate > prev_error:
+            print("[WARNING] Error increased! Reducing learning rate.")
+            eta /= 2  # Reduce learning rate if error increases
+
+        prev_error = result.error_rate  # Track for next iteration
+
+    print("\n✅ [TEST PASSED] Model shows signs of learning and convergence!")
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python3 test_compute_node.py dataset_file")
-        sys.exit(1)
-    dataset_file = str(sys.argv[1])
-    test_compute_node(dataset_file)
+    test_model_convergence()

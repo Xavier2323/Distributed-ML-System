@@ -162,8 +162,8 @@ class mlp:
         if np.size(X) < 1 or np.size(X, 1) != self.d:
             return -1
 
-        # append the labels column (prediciton data won't have labels)
-        X = np.append(X, labels)  
+        # # append the labels column (prediciton data won't have labels)
+        # X = np.append(X, labels)  
 
         self.forward_propogate(X)
         return np.argmax(self.Y, axis=1)

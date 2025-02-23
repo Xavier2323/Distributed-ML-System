@@ -1,7 +1,7 @@
 import glob
 import sys
 sys.path.append('gen-py')
-sys.path.insert(0, glob.glob('/home/hsu00191/Distributed_Systems/thrift-0.19.0/lib/py/build/lib*')[0])
+sys.path.insert(0, glob.glob('../thrift-0.19.0/lib/py/build/lib*')[0])
 
 import random
 import threading
@@ -120,6 +120,9 @@ class CoordinatorHandler(Iface):
             else:
                 print("[ERROR] Gradient shapes do not match. Skipping update.")
 
+            # print the prediction
+            
+            # Validate model after each round
             val_error = self.mlp_model.validate(f"{dir}/train_letters11.txt")
             print(f"[VALIDATION ERROR] After round {r+1}: {val_error:.4f}")
 
