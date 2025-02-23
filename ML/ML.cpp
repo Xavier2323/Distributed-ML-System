@@ -25,6 +25,7 @@ void scale_matricies(vector<vector<double>>& mat, double scalar)
 }
 
 // Sum two matricies together, store the result in _ret
+// ASSUMES the two matricies are the same size
 void sum_matricies(vector<vector<double>>& _ret, vector<vector<double>>& mat)
 {
     int rows = mat.size();
@@ -37,6 +38,7 @@ void sum_matricies(vector<vector<double>>& _ret, vector<vector<double>>& mat)
 // Calculate gradient of two matricies
 // curr should be weights after training, orig should be weights before training
 // stores result of operation to curr
+// ASSUMES the two matricies are the same size
 void calc_gradient(vector<vector<double>>& curr, vector<vector<double>>& orig)
 {
     int rows = curr.size();
@@ -66,7 +68,10 @@ bool mlp::init_training_random(string fname, int _k, int _h)
     // sets X and X_labels
     // also sets n and d
     if(!read_data(X, X_labels, fname, true))
-        return false;
+    {
+        initialized = false;
+        return initialized;
+    }
     n = X.size();
     d = X[0].size();
 
@@ -91,10 +96,6 @@ bool mlp::init_training_random(string fname, int _k, int _h)
             W[i][j] = -0.01 + (0.02 * ((double) rand() / RAND_MAX));
 
     // Initialize Y and Z via one forwards propogation
-    Y.clear();
-    Z.clear();
-    Y = vector<vector<double>>(n, vector<double>(k,0));
-    Z = vector<vector<double>>(n, vector<double>(h+1,0));
     forward_propogate(X);
 
     initialized = true;
@@ -103,12 +104,16 @@ bool mlp::init_training_random(string fname, int _k, int _h)
 
 
 // Init model with labeled data and input weights
+// ASSUMES V and W are properly sized for the corresponding fname data
 bool mlp::init_training_model(string fname, vector<vector<double>>& _V, vector<vector<double>>& _W)
 {
     // sets X and X_labels
     // also sets n and d
     if(!read_data(X, X_labels, fname, true))
-        return false;
+    {
+        initialized = false;
+        return initialized;
+    }
     n = X.size();
     d = X[0].size();
 
@@ -117,10 +122,6 @@ bool mlp::init_training_model(string fname, vector<vector<double>>& _V, vector<v
     set_weights(_V, _W);
 
     // Initialize Y and Z via one forwards propogation
-    Y.clear();
-    Z.clear();
-    Y = vector<vector<double>>(n, vector<double>(k,0));
-    Z = vector<vector<double>>(n, vector<double>(h+1,0));
     forward_propogate(X);
 
     initialized = true;
@@ -145,8 +146,7 @@ double mlp::train(double eta, int epochs)
     vector<vector<double>> _dV(h+1, vector<double>(k,0));
     vector<vector<double>> _dW(d+1, vector<double>(h,0));
 
-    int iter = 0;
-    while(iter < epochs)
+    for (int i = 0; i < epochs; i++)
     {
         // backwards propogate
         // this sets _dV and _dW
@@ -165,7 +165,6 @@ double mlp::train(double eta, int epochs)
             break;
         }
         err = err_upd;
-        iter++;
     }
 
     // return final error rate
@@ -188,7 +187,7 @@ double mlp::validate(string fname)
 
     // cannot validate if no data
     // cannot validate if dimension of data =\=
-    if(_X.size() == 0 || _X[0].size() != d)
+    if(_X.size() < 1 || _X[0].size() != d)
         return -1;
 
     // do forward_propogation once to calculate Y and Z
@@ -214,12 +213,11 @@ vector<int> mlp::predict(string fname)
 
     // cannot validate if no data
     // cannot validate if dimension of data =\=
-    if(_X.size() == 0 || _X[0].size() != d)
+    if(_X.size() < 1 || _X[0].size() != d)
         return predictions;
 
     // do forward_propogation once to calculate Y and Z
     forward_propogate(_X); 
-    predictions.clear();
     for(int i = 0; i < n; i++)
     {
         int max_idx = 0;
@@ -289,17 +287,22 @@ void mlp::update_weights(vector<vector<double>>& _dV, vector<vector<double>>& _d
 // Uses datapoints in _X array to calculate Y and Z
 void mlp::forward_propogate(vector<vector<int>>& _X)
 {
-    // update Z
+    // Get number of datapoints in matrix _X
+    int _n = _X.size();
+
+    // Clear and size Z
+    Z.clear();
+    Z = vector<vector<double>>(_n, vector<double>(h+1,0));
+
     // Z = ReLU (X * W)
     // [n x d][d + 1 x h]
-    int _n = _X.size();
     for(int i = 0; i < _n; i++)
     {
         for (int j = 0; j < h; j++)
         {
             double dot = 0;
             for(int m = 0; m < d; m++)
-                dot += X[i][m] * W[m+1][j];
+                dot += _X[i][m] * W[m+1][j];
             dot += W[0][j];
 
             Z[i][j+1] = activation_func(dot);
@@ -307,7 +310,9 @@ void mlp::forward_propogate(vector<vector<int>>& _X)
         Z[i][0] = 1;  // Z0 = 1
     }
 
-    // update Y
+    // Clear and size Y
+    Y.clear();
+    Y = vector<vector<double>>(_n, vector<double>(k,0));
 
     // O = Z * V
     // [n x h + 1][h + 1 x k]
@@ -455,7 +460,6 @@ bool mlp::read_data(vector<vector<int>>& _X, vector<int>& _X_labels, string fnam
 
     // parse lines
     string line;
-    int iter = 0;
     while(getline(data, line))
     {   
         string sdata = "";
@@ -486,7 +490,6 @@ bool mlp::read_data(vector<vector<int>>& _X, vector<int>& _X_labels, string fnam
 
         // Add datapoint to data matrix X
         _X.push_back(datapoint);
-        iter++;
     }
     data.close();
     return true;
@@ -500,7 +503,8 @@ double mlp::error_rate(vector<int>& _X_labels)
 {
     double total = 0;
     double err_tot = 0;
-    for(int i = 0; i < n; i++)
+    int _n = _X_labels.size();
+    for(int i = 0; i < _n; i++)
     {
         int max_idx = 0;
         double max = -9999;

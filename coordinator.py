@@ -24,14 +24,15 @@ class SharedGradient:
 
     def update(self, local_gradient):
         with self.lock:
-            print(f"[DEBUG] Before update - Shared Gradient sum: {np.sum(self.gradient)}")
             self.gradient = sum_matricies(self.gradient, local_gradient)
-            print(f"[DEBUG] After update - Shared Gradient sum: {np.sum(self.gradient)}")
 
     def average(self, num_jobs):
-        """ Compute average gradient """
         with self.lock:
             return scale_matricies(self.gradient, 1 / max(num_jobs, 1))  # Prevent division by zero
+
+    def reset(self):
+        with self.lock:
+            self.gradient = np.zeros_like(self.gradient)
 
 class CoordinatorHandler(Iface):
     def __init__(self, scheduling_policy, compute_nodes_file):
@@ -54,10 +55,10 @@ class CoordinatorHandler(Iface):
 
     def _select_compute_node(self):
         """ Selects a compute node based on the scheduling policy """
-        if self.scheduling_policy == 1:  # Random scheduling
-            return random.choice(self.compute_nodes)
-        else:  # Load-balanced scheduling
-            return min(self.compute_nodes, key=lambda node: random.random())
+        if self.scheduling_policy == 1:  
+            return random.choice(self.compute_nodes)  # Random scheduling
+        else:  
+            return min(self.compute_nodes, key=lambda node: random.random())  # Simple load balancing
 
     def train(self, dir, rounds, epochs, h, k, eta):
         """
@@ -69,25 +70,28 @@ class CoordinatorHandler(Iface):
         - eta: Learning rate
         """
         # Initialize model with random weights
-        self.mlp_model.init_training_random(f"{dir}/train_letters1.txt", k, h)
+        success = self.mlp_model.init_training_random(f"{dir}/train_letters1.txt", k, h)
+        if not success:
+            print("[ERROR] MLP model initialization failed. Check dataset path.")
+            return -1
+        
         V, W = self.mlp_model.get_weights()
+        print(f"[DEBUG] Initial Weights: W shape {W.shape}, V shape {V.shape}")
 
-        # Shared gradient containers
         shared_gradient_V = SharedGradient(V.shape)
         shared_gradient_W = SharedGradient(W.shape)
 
         for r in range(rounds):
             print(f"[TRAINING ROUND {r+1}/{rounds}]")
 
-            # Reset gradients for the round
-            shared_gradient_V.gradient = np.zeros_like(shared_gradient_V.gradient)
-            shared_gradient_W.gradient = np.zeros_like(shared_gradient_W.gradient)
+            # Retrieve latest weights and reset gradients
+            V, W = self.mlp_model.get_weights()
+            shared_gradient_V.reset()
+            shared_gradient_W.reset()
 
             threads = []
-            
-            work_queue = [f"{dir}/train_letters{i}.txt" for i in range(1, 12)]  # Assume 10 training files
+            work_queue = [f"{dir}/train_letters{i}.txt" for i in range(1, 12)]  
 
-            # Spawn threads for each training file
             for training_file in work_queue:
                 node_host, node_port = self._select_compute_node()
                 t = threading.Thread(
@@ -97,23 +101,26 @@ class CoordinatorHandler(Iface):
                 threads.append(t)
                 t.start()
 
-            # Wait for all threads to complete
             for t in threads:
                 t.join()
-
-            # Average gradients and update weights
+            
             avg_gradient_V = shared_gradient_V.average(len(work_queue))
             avg_gradient_W = shared_gradient_W.average(len(work_queue))
 
             if avg_gradient_W.shape == W.shape and avg_gradient_V.shape == V.shape:
-                self.mlp_model.update_weights(avg_gradient_V, avg_gradient_W)
-                print(f"[DEBUG] Weights Updated - W sum: {np.sum(self.mlp_model.W)}, V sum: {np.sum(self.mlp_model.V)}")
+                scaled_gradient_V = scale_matricies(avg_gradient_V, -eta)
+                scaled_gradient_W = scale_matricies(avg_gradient_W, -eta)
+                
+                # check it's updating the weights
+                print(f"[DEBUG] Scaled Gradients: dW sum {np.sum(scaled_gradient_W)}, dV sum {np.sum(scaled_gradient_V)}")
+                self.mlp_model.update_weights(scaled_gradient_V, scaled_gradient_W)
+                
+                print(f"[DEBUG] Updated Weights: W {W[:2]}, V {V[:2]}")
+                
             else:
                 print("[ERROR] Gradient shapes do not match. Skipping update.")
 
-
-            # Validate model
-            val_error = self.mlp_model.validate(f"{dir}/validate_letters.txt")
+            val_error = self.mlp_model.validate(f"{dir}/train_letters11.txt")
             print(f"[VALIDATION ERROR] After round {r+1}: {val_error:.4f}")
 
         return val_error
@@ -121,14 +128,12 @@ class CoordinatorHandler(Iface):
     def thread_func(self, node_host, node_port, training_file, shared_gradient_V, shared_gradient_W, V, W, eta, epochs):
         """ Worker thread for training a single batch """
         try:
-            # Connect to compute node
             transport = TSocket.TSocket(node_host, node_port)
             transport = TTransport.TBufferedTransport(transport)
             protocol = TBinaryProtocol.TBinaryProtocol(transport)
             client = ComputeNode.Client(protocol)
             transport.open()
 
-            # Initialize training on compute node
             model = MLModel(W=W.tolist(), V=V.tolist())
             status = client.initializeTraining(training_file, model)
 
@@ -137,7 +142,8 @@ class CoordinatorHandler(Iface):
                 local_gradient_V = np.array(result.gradient.dV)
                 local_gradient_W = np.array(result.gradient.dW)
 
-                # Update shared gradients
+                print(f"[DEBUG] Received Gradients: dW sum {np.sum(local_gradient_W)}, dV sum {np.sum(local_gradient_V)}")
+
                 shared_gradient_V.update(local_gradient_V)
                 shared_gradient_W.update(local_gradient_W)
 
@@ -155,14 +161,12 @@ def main():
     port = int(sys.argv[1])
     scheduling_policy = int(sys.argv[2])
 
-    # Initialize coordinator with compute node list
     handler = CoordinatorHandler(scheduling_policy, "compute_nodes.txt")
     processor = Coordinator.Processor(handler)
     transport = TSocket.TServerSocket(port=port)
     tfactory = TTransport.TBufferedTransportFactory()
     pfactory = TBinaryProtocol.TBinaryProtocolFactory()
 
-    # Start the server
     server = TServer.TSimpleServer(processor, transport, tfactory, pfactory)
 
     print(f"[STARTED] Coordinator listening on port {port} with scheduling policy {scheduling_policy}")

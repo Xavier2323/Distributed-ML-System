@@ -23,11 +23,13 @@ using namespace std;
 void scale_matricies(vector<vector<double>>& mat, double scalar);
 
 // Sum two matricies together, store the result in _ret
+// ASSUMES the two matricies are the same size
 void sum_matricies(vector<vector<double>>& _ret, vector<vector<double>>& mat);
 
 // Calculate gradient of two matricies
 // curr should be weights after training, orig should be weights before training
 // stores result of operation to curr
+// ASSUMES the two matricies are the same size
 void calc_gradient(vector<vector<double>>& curr, vector<vector<double>>& orig);
 
 

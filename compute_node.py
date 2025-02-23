@@ -25,7 +25,7 @@ class ComputeNodeHandler(Iface):
         if random.random() < self.load_probability:
             time.sleep(3)  # Simulating load
 
-    def _should_accept_task(self):
+    def _should_accept_task(self): 
         """ Decide if task should be accepted based on load probability """
         return random.random() >= self.load_probability
 
@@ -38,9 +38,19 @@ class ComputeNodeHandler(Iface):
 
         V = np.array(model.V)
         W = np.array(model.W)
-        success = self.mlp_model.init_training_model(filename, V, W)
 
+        # 🔹 Store h and k for future use
+        self.h = W.shape[1]  # Number of hidden units
+        self.k = V.shape[1]  # Number of output classes
+
+        # 🔹 Ensure W has bias row
+        if W.shape[0] == self.h:  # If missing bias row, add it
+            print(f"[WARNING] Compute Node: Fixing W shape. Expected {self.h+1}, got {W.shape[0]}")
+            W = np.vstack([np.ones((1, W.shape[1])), W])
+
+        success = self.mlp_model.init_training_model(filename, V, W)
         return TaskStatus.ACCEPTED if success else TaskStatus.REJECTED
+
 
     def trainModel(self, eta, epochs):
         """ Trains the model and returns the computed gradient """
@@ -60,11 +70,15 @@ class ComputeNodeHandler(Iface):
 
         print(f"[DEBUG] Compute Node Gradient - dW sum: {np.sum(dW)}, dV sum: {np.sum(dV)}")
 
+        # 🔹 If gradients are zero, something is wrong!
+        if np.sum(dW) == 0 or np.sum(dV) == 0:
+            print("[WARNING] Zero gradients detected! Model may not be learning.")
 
         # Convert to Thrift struct
         gradient = MLGradient(dV=dV.tolist(), dW=dW.tolist())
 
         return TrainingResult(gradient=gradient, error_rate=error_rate)
+
 
 
 

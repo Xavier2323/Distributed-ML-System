@@ -10,14 +10,15 @@ import numpy as np
 ##
 
 
+# Scale a matrix by a scalar value (element wise multiplication)
 def scale_matricies(mat, scalar):
     return np.multiply(mat, scalar)
 
-
+# Sum two matricies together
 def sum_matricies(mat, mat2):
     return np.add(mat, mat2)
 
-
+# Subtract curr from orig
 def calc_gradient(curr, orig):
     return np.subtract(curr, orig)
 
@@ -42,12 +43,13 @@ class mlp:
     # initialize the training model with random weights of dimensions _k and _h
     # returns self.initialized, false on error, true on success
     def init_training_random(self, fname, _k, _h):
+        
         X = []
         labels = []
         X, labels = self.read_data(fname)
 
         # test if datafile was valid
-        if np.size(X) < 1:
+        if np.size(labels) < 1:
             self.initialized = False
             return self.initialized
 
@@ -81,7 +83,7 @@ class mlp:
         X, labels = self.read_data(fname)
 
         # test if datafile is valid
-        if np.size(X) < 1:
+        if np.size(labels) < 1:
             self.initialized = False
             return self.initialized
         
@@ -116,9 +118,6 @@ class mlp:
             # backwards propogate
             dV, dW = self.backward_propogate(eta)
             
-            # checking dV, dW
-            # print(f"[DEBUG] Backprop - dW sum: {np.sum(dW)}, dV sum: {np.sum(dV)}")
-            
             # update weights
             self.update_weights(dV, dW)
 
@@ -142,9 +141,9 @@ class mlp:
         if not(self.initialized):
             return -1
 
-        # return error on no validation data
+        # return error on no validation data / incorrect input dimensions
         X, labels = self.read_data(fname)
-        if np.size(labels) < 1:
+        if np.size(X) < 1 or np.size(X, 1) != self.d:
             return -1
 
         self.forward_propogate(X)
@@ -158,9 +157,9 @@ class mlp:
         if not(self.initialized):
             return -1
 
-        # return error on no prediciton data
+        # return error on no validation data / incorrect input dimensions
         X, labels = self.read_data(fname)
-        if np.size(labels) < 1:
+        if np.size(X) < 1 or np.size(X, 1) != self.d:
             return -1
 
         # append the labels column (prediciton data won't have labels)
@@ -180,8 +179,7 @@ class mlp:
 
         # set h and k
         h, k = np.shape(V)
-        h = h - 1
-        self.h = h
+        self.h = h - 1
         self.k = k
 
         # set W and V
@@ -196,13 +194,8 @@ class mlp:
 
     # update the model's weights
     def update_weights(self, dV, dW):
-        # print(f"[DEBUG] Updating Weights - Before: W sum: {np.sum(self.W)}, V sum: {np.sum(self.V)}")
-
-        self.V += dV  # Ensure gradient is applied
-        self.W += dW
-
-        # print(f"[DEBUG] Updating Weights - After: W sum: {np.sum(self.W)}, V sum: {np.sum(self.V)}")
-
+        self.V = self.V + dV
+        self.W = self.W + dW
 
 
 ##
@@ -243,12 +236,10 @@ class mlp:
         dW = np.transpose(np.multiply(np.dot((R-self.Y),Vt), XW))
         dW = eta * np.transpose(np.dot(dW,X))
 
-        # print(f"[DEBUG] Backprop - dW sum: {np.sum(dW)}, dV sum: {np.sum(dV)}")
-
         return dV, dW
 
 
-    # read data, do not call this in your thrift code
+    # read data
     def read_data(self, fname):
         X = []
         labels = []
@@ -289,6 +280,7 @@ def error_func(Y, labels):
 
 
 # Calculate the % of wrongly classified samples
+# forward propogate MUST be called first on X corresponding to labels
 def error_rate(Y, labels):
     _n = np.shape(labels)
     return (np.sum(np.not_equal(np.argmax(Y, axis=1), labels)) / _n)[0]
