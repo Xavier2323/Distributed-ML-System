@@ -6,10 +6,10 @@
 ## Running Our Code:
 
 Results after 10 epochs w/ client command python3 client.py localhost 8090 ./ML/letters 30 10 20 0.0001, a 0.0 load probability amongst 4 nodes, and a coordinator scheduling_policy of 1:
-[Phase 1 Full Run](./assets/phase1_30_epochs_ss.png) <br>
+![Phase 1 Full Run](./assets/phase1_30_epochs_ss.png) <br>
 
 Results after 5 epochs w/ client command python3 client.py localhost 8090 localhost 9090 ./ML/letters 50 75 20 0.0001, a 0.0 load probability amongst 4 nodes, and a coordinator scheduling_policy of 1:
-[Phase 1 Partial Run (more intensive)](./assets/phase1_5_epochs_ss.png) <br>
+![Phase 1 Partial Run (more intensive)](./assets/phase1_5_epochs_ss.png) <br>
 
 
 In Client Terminal: python3 client.py localhost 9090 ./ML/letters 50 75 20 0.0001
