@@ -68,7 +68,7 @@ class ComputeNodeHandler(Iface):
         dV = calc_gradient(V_new, V_old)
         dW = calc_gradient(W_new, W_old)
 
-        print(f"[DEBUG] Compute Node Gradient - dW sum: {np.sum(dW)}, dV sum: {np.sum(dV)}")
+        print(f"[DEBUG] Compute Node Gradient - dW sum: {np.sum(np.abs(dW))}, dV sum: {np.sum(np.abs(dV))}")
 
         # 🔹 If gradients are zero, something is wrong!
         if np.sum(dW) == 0 or np.sum(dV) == 0:
@@ -78,7 +78,6 @@ class ComputeNodeHandler(Iface):
         gradient = MLGradient(dV=dV.tolist(), dW=dW.tolist())
 
         return TrainingResult(gradient=gradient, error_rate=error_rate)
-
 
 
 

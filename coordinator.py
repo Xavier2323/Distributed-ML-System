@@ -90,7 +90,8 @@ class CoordinatorHandler(Iface):
             shared_gradient_W.reset()
 
             threads = []
-            work_queue = [f"{dir}/train_letters{i}.txt" for i in range(1, 12)]  
+            # Change this back to process all files
+            work_queue = [f"{dir}/train_letters{i}.txt" for i in range(1, 12)]
 
             for training_file in work_queue:
                 node_host, node_port = self._select_compute_node()
@@ -108,19 +109,17 @@ class CoordinatorHandler(Iface):
             avg_gradient_W = shared_gradient_W.average(len(work_queue))
 
             if avg_gradient_W.shape == W.shape and avg_gradient_V.shape == V.shape:
-                scaled_gradient_V = scale_matricies(avg_gradient_V, -eta)
-                scaled_gradient_W = scale_matricies(avg_gradient_W, -eta)
                 
-                # check it's updating the weights
-                print(f"[DEBUG] Scaled Gradients: dW sum {np.sum(scaled_gradient_W)}, dV sum {np.sum(scaled_gradient_V)}")
-                self.mlp_model.update_weights(scaled_gradient_V, scaled_gradient_W)
+                # check to see if weights are being updated, then update them:
+                print(f"[DEBUG] Avg Absolute Gradients: dW sum {np.sum(np.abs(avg_gradient_W))}, dV sum {np.sum(np.abs(avg_gradient_V))}")
+                self.mlp_model.update_weights(avg_gradient_V, avg_gradient_W)
                 
-                print(f"[DEBUG] Updated Weights: W {W[:2]}, V {V[:2]}")
+                # Verify weights were updated
+                new_V, new_W = self.mlp_model.get_weights()
+                # print(f"[DEBUG] Updated Weights: W {new_W[:2]}, V {new_V[:2]}")
                 
             else:
                 print("[ERROR] Gradient shapes do not match. Skipping update.")
-
-            # print the prediction
             
             # Validate model after each round
             val_error = self.mlp_model.validate(f"{dir}/train_letters11.txt")
@@ -145,7 +144,7 @@ class CoordinatorHandler(Iface):
                 local_gradient_V = np.array(result.gradient.dV)
                 local_gradient_W = np.array(result.gradient.dW)
 
-                print(f"[DEBUG] Received Gradients: dW sum {np.sum(local_gradient_W)}, dV sum {np.sum(local_gradient_V)}")
+                print(f"[DEBUG] Received Gradients: dW sum: {np.sum(np.abs(local_gradient_W))}, dV sum: {np.sum(np.abs(local_gradient_V))}")
 
                 shared_gradient_V.update(local_gradient_V)
                 shared_gradient_W.update(local_gradient_W)
