@@ -39,6 +39,66 @@ class CoordinatorHandler(Iface):
         self.scheduling_policy = scheduling_policy
         self.mlp_model = mlp()
         self.compute_nodes = self._load_compute_nodes(compute_nodes_file)
+        self.node_load = {node: 0 for node in self.compute_nodes}  # Tracks active jobs per node
+        self.lock = threading.Lock()  # Ensure thread safety when modifying `node_load`
+
+    def _select_compute_node(self):
+        """ Selects a compute node based on the scheduling policy """
+        if self.scheduling_policy == 1:  
+            # TODO attempt to acquire node
+            return random.choice(self.compute_nodes)  # Randomly schedule a node
+        else:  
+            with self.lock:
+                # TODO attempt to acquire node
+                return min(self.node_load, key=self.node_load.get)  # Get the node with the lowest load
+
+    def _increment_node_load(self, node):
+        """ Increment the job count for a node """
+        with self.lock:
+            self.node_load[node] += 1
+
+    def _decrement_node_load(self, node):
+        """ Decrement the job count for a node """
+        with self.lock:
+            self.node_load[node] = max(0, self.node_load[node] - 1)
+
+    def thread_func(self, node_host, node_port, training_file, shared_gradient_V, shared_gradient_W, V, W, eta, epochs):
+        """ Worker thread for training a single batch """
+        node = (node_host, node_port)
+        # TODO: try to acquire node. if fails, reschedule?
+        # poll nodes:
+        # self._acquire_node()
+        # 
+        self._increment_node_load(node)  # Mark the node as handling a job
+
+        try:
+            transport = TSocket.TSocket(node_host, node_port)
+            transport = TTransport.TBufferedTransport(transport)
+            protocol = TBinaryProtocol.TBinaryProtocol(transport)
+            client = ComputeNode.Client(protocol)
+            transport.open()
+
+            model = MLModel(W=W.tolist(), V=V.tolist())
+            status = client.initializeTraining(training_file, model)
+
+            if status == TaskStatus.ACCEPTED:
+                # TODO time
+                result = client.trainModel(eta, epochs)
+                # TODO end time
+                local_gradient_V = np.array(result.gradient.dV)
+                local_gradient_W = np.array(result.gradient.dW)
+                print(f"[DEBUG] Received Gradients: dW sum: {np.sum(np.abs(local_gradient_W))}, dV sum: {np.sum(np.abs(local_gradient_V))}")
+
+                shared_gradient_V.update(local_gradient_V)
+                shared_gradient_W.update(local_gradient_W)
+
+            transport.close()
+
+        except Exception as e:
+            print(f"[ERROR] Compute node {node_host}:{node_port} failed - {e}")
+
+        finally:
+            self._decrement_node_load(node)  # Mark the job as complete
 
     def _load_compute_nodes(self, filename):
         """ Reads compute nodes from file and returns a list of (host, port) tuples """
@@ -52,13 +112,6 @@ class CoordinatorHandler(Iface):
         except Exception as e:
             print(f"[ERROR] Failed to load compute nodes from {filename}: {e}")
         return nodes
-
-    def _select_compute_node(self):
-        """ Selects a compute node based on the scheduling policy """
-        if self.scheduling_policy == 1:  
-            return random.choice(self.compute_nodes)  # Random scheduling
-        else:  
-            return min(self.compute_nodes, key=lambda node: random.random())  # Simple load balancing
 
     def train(self, dir, rounds, epochs, h, k, eta):
         """
@@ -83,6 +136,7 @@ class CoordinatorHandler(Iface):
 
         for r in range(rounds):
             print(f"[TRAINING ROUND {r+1}/{rounds}]")
+            # TODO start time for round
 
             # Retrieve latest weights and reset gradients
             V, W = self.mlp_model.get_weights()
@@ -124,35 +178,11 @@ class CoordinatorHandler(Iface):
             # Validate model after each round
             val_error = self.mlp_model.validate(f"{dir}/train_letters11.txt")
             print(f"[VALIDATION ERROR] After round {r+1}: {val_error:.4f}")
+            
+            # TODO print end time for round
 
+        # TODO time
         return val_error
-
-    def thread_func(self, node_host, node_port, training_file, shared_gradient_V, shared_gradient_W, V, W, eta, epochs):
-        """ Worker thread for training a single batch """
-        try:
-            transport = TSocket.TSocket(node_host, node_port)
-            transport = TTransport.TBufferedTransport(transport)
-            protocol = TBinaryProtocol.TBinaryProtocol(transport)
-            client = ComputeNode.Client(protocol)
-            transport.open()
-
-            model = MLModel(W=W.tolist(), V=V.tolist())
-            status = client.initializeTraining(training_file, model)
-
-            if status == TaskStatus.ACCEPTED:
-                result = client.trainModel(eta, epochs)
-                local_gradient_V = np.array(result.gradient.dV)
-                local_gradient_W = np.array(result.gradient.dW)
-
-                print(f"[DEBUG] Received Gradients: dW sum: {np.sum(np.abs(local_gradient_W))}, dV sum: {np.sum(np.abs(local_gradient_V))}")
-
-                shared_gradient_V.update(local_gradient_V)
-                shared_gradient_W.update(local_gradient_W)
-
-            transport.close()
-
-        except Exception as e:
-            print(f"[ERROR] Compute node {node_host}:{node_port} failed - {e}")
 
 def main():
     """ Main entry point for starting the coordinator server """
