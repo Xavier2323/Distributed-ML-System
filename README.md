@@ -6,7 +6,7 @@
 
 ## Running Our Code:
 
-Results after 10 epochs w/ client command:
+Results after running w/ client command:
 `python3 client.py localhost 9090 ./ML/letters 30 10 20 0.0001`
 ![Phase 2 Full Run](./assets/phase_2_results.png) <br>
 
