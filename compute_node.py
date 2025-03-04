@@ -25,15 +25,14 @@ class ComputeNodeHandler(Iface):
         if random.random() < self.load_probability:
             time.sleep(3)  # Simulating load
 
-    def _should_accept_task(self): 
+    def should_accept_task(self): 
         """ Decide if task should be accepted based on load probability """
-        return random.random() >= self.load_probability
+        res = random.random() >= self.load_probability
+        print(f"Is willing to accept task: {res}")
+        return res
 
     def initializeTraining(self, filename, model):
         """ Initializes the MLP model with given weights """
-        if not self._should_accept_task():
-            return TaskStatus.REJECTED  # Reject if overloaded
-
         self._inject_load()
 
         V = np.array(model.V)
