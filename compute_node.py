@@ -25,15 +25,14 @@ class ComputeNodeHandler(Iface):
         if random.random() < self.load_probability:
             time.sleep(3)  # Simulating load
 
-    def _should_accept_task(self): 
+    def should_accept_task(self): 
         """ Decide if task should be accepted based on load probability """
-        return random.random() >= self.load_probability
+        res = random.random() >= self.load_probability
+        print(f"Is willing to accept task: {res}")
+        return res
 
     def initializeTraining(self, filename, model):
         """ Initializes the MLP model with given weights """
-        if not self._should_accept_task():
-            return TaskStatus.REJECTED  # Reject if overloaded
-
         self._inject_load()
 
         V = np.array(model.V)
@@ -68,7 +67,7 @@ class ComputeNodeHandler(Iface):
         dV = calc_gradient(V_new, V_old)
         dW = calc_gradient(W_new, W_old)
 
-        print(f"[DEBUG] Compute Node Gradient - dW sum: {np.sum(dW)}, dV sum: {np.sum(dV)}")
+        print(f"[DEBUG] Compute Node Gradient - dW sum: {np.sum(np.abs(dW))}, dV sum: {np.sum(np.abs(dV))}")
 
         # 🔹 If gradients are zero, something is wrong!
         if np.sum(dW) == 0 or np.sum(dV) == 0:
@@ -78,7 +77,6 @@ class ComputeNodeHandler(Iface):
         gradient = MLGradient(dV=dV.tolist(), dW=dW.tolist())
 
         return TrainingResult(gradient=gradient, error_rate=error_rate)
-
 
 
 
