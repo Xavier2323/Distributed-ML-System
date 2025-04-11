@@ -176,9 +176,11 @@ class CoordinatorHandler(Iface):
         try:
             with open(filename, "r") as file:
                 for line in file:
-                    host, port = line.strip().split(",")
-                    nodes.append((host, int(port)))
-            logger.info(f"[INFO] Loaded {len(nodes)} compute nodes.")
+                    parts = line.strip().split(",")
+                    if len(parts) == 2:
+                        host, port = parts
+                        nodes.append((host, int(port)))
+                logger.info(f"[INFO] Loaded {len(nodes)} compute nodes.")
         except Exception as e:
             logger.error(f"[ERROR] Failed to load compute nodes from {filename}: {e}")
         return nodes
@@ -273,7 +275,7 @@ def main():
 
     handler = CoordinatorHandler(scheduling_policy, "compute_nodes.txt")
     processor = Coordinator.Processor(handler)
-    transport = TSocket.TServerSocket(port=port)
+    transport = TSocket.TServerSocket(host='0.0.0.0', port=port)
     tfactory = TTransport.TBufferedTransportFactory()
     pfactory = TBinaryProtocol.TBinaryProtocolFactory()
 

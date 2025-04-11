@@ -90,7 +90,7 @@ def main():
 
     handler = ComputeNodeHandler(load_probability)
     processor = ComputeNode.Processor(handler)
-    transport = TSocket.TServerSocket(port=port)
+    transport = TSocket.TServerSocket(host='0.0.0.0', port=port)
     tfactory = TTransport.TBufferedTransportFactory()
     pfactory = TBinaryProtocol.TBinaryProtocolFactory()
 

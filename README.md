@@ -1,4 +1,4 @@
-# Distributed Systems: Project 1
+# Distributed ML System
 
 ### Jun-Ting Hsu (hsu00191@umn.edu), Thomas Knickerbocker (knick073@umn.edu)
 
@@ -18,6 +18,7 @@ Results after running w/ client command:
 `python3 coordinator.py 9090 1`
 
 2. For each compute node, in a terminal: 
+run `python3 register_ip.py` to register for compute_node
 `python3 compute_node.py <portNo> 0.0`
 
 3. In Client Terminal: 
